@@ -9,6 +9,7 @@ import Dashboard from "./pages/Dashboard";
 import Report from "./pages/Report";
 import Emergency from "./pages/Emergency";
 import SafeRoutes from "./pages/SafeRoutes";
+import HelpCentre from "./pages/HelpCentre";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -26,6 +27,7 @@ const App = () => (
           <Route path="/report" element={<Report />} />
           <Route path="/emergency" element={<Emergency />} />
           <Route path="/routes" element={<SafeRoutes />} />
+          <Route path="/help" element={<HelpCentre />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
