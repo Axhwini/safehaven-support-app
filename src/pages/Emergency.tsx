@@ -210,15 +210,25 @@ const Emergency = () => {
               </div>
             </div>
 
-            {/* Cancel SOS */}
+            {/* Emergency Actions */}
             <SafeCard>
-              <SafeCardContent className="text-center py-6">
-                <p className="text-sm text-muted-foreground mb-4">
+              <SafeCardContent className="space-y-3 py-6">
+                <SafeButton
+                  variant="primary"
+                  onClick={() => navigate("/routes?sos=true")}
+                  className="w-full"
+                >
+                  <MapPin className="h-4 w-4 mr-2" />
+                  Find Nearest Help Centers
+                </SafeButton>
+                
+                <p className="text-center text-sm text-muted-foreground">
                   If you're no longer in immediate danger:
                 </p>
                 <SafeButton
                   variant="outline"
                   onClick={() => setSosActivated(false)}
+                  className="w-full"
                 >
                   I'm Safe Now
                 </SafeButton>
