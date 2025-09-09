@@ -10,7 +10,8 @@ import {
   User,
   Home,
   HeadphonesIcon,
-  Shield
+  Shield,
+  HelpCircle
 } from "lucide-react"
 
 const Dashboard = () => {
@@ -48,13 +49,21 @@ const Dashboard = () => {
       action: () => navigate("/routes"),
       variant: "secondary" as const,
       urgent: false
+    },
+    {
+      title: "Help Centre",
+      description: "Legal rights & support resources",
+      icon: HelpCircle,
+      action: () => navigate("/help"),
+      variant: "accent" as const,
+      urgent: false
     }
   ]
 
   const navigationItems = [
     { icon: Home, label: "Home", active: true },
     { icon: FileText, label: "Reports" },
-    { icon: HeadphonesIcon, label: "Support" },
+    { icon: HelpCircle, label: "Help", action: () => navigate("/help") },
     { icon: User, label: "Profile" }
   ]
 
@@ -161,6 +170,7 @@ const Dashboard = () => {
               className={`flex flex-col items-center space-y-1 h-auto py-2 ${
                 item.active ? 'text-primary' : 'text-muted-foreground'
               }`}
+              onClick={item.action}
             >
               <item.icon className="h-5 w-5" />
               <span className="text-xs">{item.label}</span>
