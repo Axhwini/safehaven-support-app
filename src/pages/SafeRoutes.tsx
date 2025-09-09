@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
+import { GoogleMap, useJsApiLoader, Marker, InfoWindow, DirectionsRenderer, Polygon } from "@react-google-maps/api"
 import { SafeButton } from "@/components/ui/safe-button"
 import { SafeCard, SafeCardContent } from "@/components/ui/safe-card"
 import { Input } from "@/components/ui/input"
-import { Wrapper } from "@googlemaps/react-wrapper"
-import { ArrowLeft, MapPin, Navigation, Phone, Filter, Eye } from "lucide-react"
+import { ArrowLeft, MapPin, Navigation, Phone, Eye } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import GoogleMapsWrapper from "@/components/GoogleMapsWrapper"
 
@@ -68,111 +68,79 @@ const safetyLocations: SafetyLocation[] = [
   }
 ]
 
+// Custom marker icons
 const markerIcons = {
-  hospital: '🏥',
-  police: '🛡️', 
-  medical: '💊',
-  help_centre: '🆘'
+  hospital: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+    <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="16" cy="16" r="15" fill="#3b82f6" stroke="white" stroke-width="2"/>
+      <path d="M16 8v16M8 16h16" stroke="white" stroke-width="3" stroke-linecap="round"/>
+    </svg>
+  `),
+  police: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+    <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="16" cy="16" r="15" fill="#6366f1" stroke="white" stroke-width="2"/>
+      <path d="M16 6l-4 4v6h8v-6l-4-4z M12 16v8h8v-8" fill="white"/>
+    </svg>
+  `),
+  medical: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+    <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="16" cy="16" r="15" fill="#10b981" stroke="white" stroke-width="2"/>
+      <ellipse cx="16" cy="16" rx="8" ry="12" fill="white"/>
+      <ellipse cx="16" cy="16" rx="6" ry="10" fill="#10b981"/>
+    </svg>
+  `),
+  help_centre: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+    <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="16" cy="16" r="15" fill="#f59e0b" stroke="white" stroke-width="2"/>
+      <circle cx="16" cy="16" r="10" fill="white"/>
+      <circle cx="16" cy="16" r="6" fill="#f59e0b"/>
+      <circle cx="16" cy="16" r="3" fill="white"/>
+    </svg>
+  `)
 }
 
-const markerColors = {
-  hospital: '#3b82f6', // blue
-  police: '#6366f1', // indigo  
-  medical: '#10b981', // emerald
-  help_centre: '#f59e0b' // amber
+// Mock unsafe areas data
+const unsafeAreas = [
+  {
+    id: 'unsafe_1',
+    coordinates: [
+      { lat: 40.7200, lng: -74.0100 },
+      { lat: 40.7250, lng: -74.0050 },
+      { lat: 40.7220, lng: -74.0000 },
+      { lat: 40.7170, lng: -74.0050 }
+    ]
+  }
+]
+
+const mapContainerStyle = {
+  width: '100%',
+  height: '100%'
 }
 
-interface MapComponentProps {
-  center: google.maps.LatLngLiteral
-  zoom: number
-  locations: SafetyLocation[]
-  filters: FilterState
-  onLocationSelect: (location: SafetyLocation) => void
-  searchDestination: string
-  sosMode: boolean
+const defaultCenter = {
+  lat: 40.7128,
+  lng: -74.0060
 }
 
-const MapComponent = ({ center, zoom, locations, filters, onLocationSelect, searchDestination, sosMode }: MapComponentProps) => {
-  const ref = useRef<HTMLDivElement>(null)
-  const [map, setMap] = useState<google.maps.Map>()
-  const [markers, setMarkers] = useState<google.maps.Marker[]>([])
-
-  useEffect(() => {
-    if (ref.current && !map) {
-      const newMap = new window.google.maps.Map(ref.current, {
-        center,
-        zoom,
-        styles: [
-          {
-            featureType: "poi",
-            elementType: "labels",
-            stylers: [{ visibility: "off" }]
-          }
-        ]
-      })
-      setMap(newMap)
-    }
-  }, [ref, map, center, zoom])
-
-  // Clear existing markers
-  const clearMarkers = useCallback(() => {
-    markers.forEach(marker => marker.setMap(null))
-    setMarkers([])
-  }, [markers])
-
-  // Add markers based on filters
-  useEffect(() => {
-    if (!map) return
-
-    clearMarkers()
-    const newMarkers: google.maps.Marker[] = []
-
-    const filteredLocations = locations.filter(location => filters[location.type])
-
-    filteredLocations.forEach(location => {
-      const marker = new window.google.maps.Marker({
-        position: { lat: location.lat, lng: location.lng },
-        map,
-        title: location.name,
-        icon: {
-          url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
-            <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
-              <circle cx="20" cy="20" r="18" fill="${markerColors[location.type]}" stroke="white" stroke-width="2"/>
-              <text x="20" y="25" text-anchor="middle" font-size="16" fill="white">${markerIcons[location.type]}</text>
-            </svg>
-          `)}`,
-          scaledSize: new window.google.maps.Size(40, 40),
-          anchor: new window.google.maps.Point(20, 20)
-        }
-      })
-
-      marker.addListener('click', () => {
-        onLocationSelect(location)
-      })
-
-      // Highlight in SOS mode
-      if (sosMode && (location.type === 'hospital' || location.type === 'police')) {
-        marker.setAnimation(window.google.maps.Animation.BOUNCE)
-        setTimeout(() => marker.setAnimation(null), 3000)
-      }
-
-      newMarkers.push(marker)
-    })
-
-    setMarkers(newMarkers)
-  }, [map, locations, filters, clearMarkers, onLocationSelect, sosMode])
-
-  return <div ref={ref} className="w-full h-full rounded-lg" />
-}
+const libraries: ("places" | "geometry")[] = ["places", "geometry"]
 
 const SafeRoutes = () => {
   const navigate = useNavigate()
   const { toast } = useToast()
-  const [userLocation, setUserLocation] = useState<google.maps.LatLngLiteral>({ lat: 40.7128, lng: -74.0060 })
+  
+  const { isLoaded } = useJsApiLoader({
+    id: 'google-map-script',
+    googleMapsApiKey: (window as any).GOOGLE_MAPS_API_KEY || "",
+    libraries
+  })
+
+  const [map, setMap] = useState<google.maps.Map | null>(null)
+  const [userLocation, setUserLocation] = useState<google.maps.LatLngLiteral>(defaultCenter)
   const [selectedLocation, setSelectedLocation] = useState<SafetyLocation | null>(null)
   const [searchDestination, setSearchDestination] = useState("")
   const [quickExitMode, setQuickExitMode] = useState(false)
   const [sosMode, setSosMode] = useState(false)
+  const [directionsResponse, setDirectionsResponse] = useState<google.maps.DirectionsResult | null>(null)
   const [filters, setFilters] = useState<FilterState>({
     hospital: true,
     police: true,
@@ -213,6 +181,14 @@ const SafeRoutes = () => {
     }
   }, [toast])
 
+  const onLoad = useCallback((map: google.maps.Map) => {
+    setMap(map)
+  }, [])
+
+  const onUnmount = useCallback(() => {
+    setMap(null)
+  }, [])
+
   const toggleFilter = (type: SafetyMarkerType) => {
     setFilters(prev => ({ ...prev, [type]: !prev[type] }))
   }
@@ -230,9 +206,46 @@ const SafeRoutes = () => {
     window.open(url, '_blank')
   }
 
+  const planRoute = useCallback(() => {
+    if (!map || !searchDestination) return
+
+    const directionsService = new google.maps.DirectionsService()
+    
+    directionsService.route(
+      {
+        origin: userLocation,
+        destination: searchDestination,
+        travelMode: google.maps.TravelMode.WALKING,
+        avoidHighways: true,
+        avoidTolls: true
+      },
+      (result, status) => {
+        if (status === "OK" && result) {
+          setDirectionsResponse(result)
+        } else {
+          toast({
+            title: "Route not found",
+            description: "Unable to find a safe route to your destination."
+          })
+        }
+      }
+    )
+  }, [map, searchDestination, userLocation, toast])
+
   const quickExit = () => {
     setQuickExitMode(true)
     setTimeout(() => setQuickExitMode(false), 3000)
+  }
+
+  const findNearestEmergencyLocation = () => {
+    const emergencyLocations = safetyLocations.filter(
+      loc => loc.type === 'hospital' || loc.type === 'police'
+    )
+    
+    if (emergencyLocations.length > 0) {
+      const nearest = emergencyLocations[0] // In real app, calculate actual nearest
+      handleDirections(nearest)
+    }
   }
 
   if (quickExitMode) {
@@ -255,6 +268,17 @@ const SafeRoutes = () => {
           >
             Return to SafeHaven
           </SafeButton>
+        </div>
+      </div>
+    )
+  }
+
+  if (!isLoaded) {
+    return (
+      <div className="min-h-screen bg-soft-gradient flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading map...</p>
         </div>
       </div>
     )
@@ -293,14 +317,19 @@ const SafeRoutes = () => {
       {/* Search & Filters */}
       <div className="px-6 py-4 space-y-4">
         {/* Search Bar */}
-        <div className="relative">
-          <MapPin className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Where do you want to go?"
-            value={searchDestination}
-            onChange={(e) => setSearchDestination(e.target.value)}
-            className="pl-10"
-          />
+        <div className="flex space-x-2">
+          <div className="relative flex-1">
+            <MapPin className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Where do you want to go?"
+              value={searchDestination}
+              onChange={(e) => setSearchDestination(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          <SafeButton onClick={planRoute} disabled={!searchDestination}>
+            Plan Route
+          </SafeButton>
         </div>
 
         {/* Filter Buttons */}
@@ -326,9 +355,16 @@ const SafeRoutes = () => {
 
         {sosMode && (
           <div className="bg-emergency/10 border border-emergency/20 rounded-lg p-3">
-            <p className="text-sm text-emergency font-medium">
+            <p className="text-sm text-emergency font-medium mb-2">
               🚨 Emergency Mode: Nearest hospitals and police stations are highlighted
             </p>
+            <SafeButton
+              variant="emergency"
+              size="sm"
+              onClick={findNearestEmergencyLocation}
+            >
+              Navigate to Nearest Help
+            </SafeButton>
           </div>
         )}
       </div>
@@ -336,69 +372,131 @@ const SafeRoutes = () => {
       {/* Map */}
       <div className="px-6 pb-6">
         <div className="h-96 rounded-lg overflow-hidden shadow-lg">
-          <GoogleMapsWrapper>
-            <Wrapper apiKey={(window as any).GOOGLE_MAPS_API_KEY || ""}>
-              <MapComponent
-                center={userLocation}
-                zoom={14}
-                locations={safetyLocations}
-                filters={filters}
-                onLocationSelect={handleLocationSelect}
-                searchDestination={searchDestination}
-                sosMode={sosMode}
+          <GoogleMap
+            mapContainerStyle={mapContainerStyle}
+            center={userLocation}
+            zoom={14}
+            onLoad={onLoad}
+            onUnmount={onUnmount}
+            options={{
+              disableDefaultUI: false,
+              zoomControl: true,
+              mapTypeControl: false,
+              streetViewControl: false,
+              fullscreenControl: false,
+              styles: [
+                {
+                  featureType: "poi",
+                  elementType: "labels",
+                  stylers: [{ visibility: "off" }]
+                }
+              ]
+            }}
+          >
+            {/* User location marker */}
+            <Marker
+              position={userLocation}
+              icon={{
+                url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+                  <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="12" cy="12" r="10" fill="#4BB5A7" stroke="white" stroke-width="2"/>
+                    <circle cx="12" cy="12" r="4" fill="white"/>
+                  </svg>
+                `),
+                scaledSize: new window.google.maps.Size(24, 24)
+              }}
+              title="Your location"
+            />
+
+            {/* Safety location markers */}
+            {safetyLocations
+              .filter(location => filters[location.type])
+              .map(location => (
+                <Marker
+                  key={location.id}
+                  position={{ lat: location.lat, lng: location.lng }}
+                  icon={{
+                    url: markerIcons[location.type],
+                    scaledSize: new window.google.maps.Size(32, 32)
+                  }}
+                  onClick={() => handleLocationSelect(location)}
+                  animation={sosMode && (location.type === 'hospital' || location.type === 'police') 
+                    ? window.google.maps.Animation.BOUNCE 
+                    : undefined}
+                />
+              ))}
+
+            {/* Info window for selected location */}
+            {selectedLocation && (
+              <InfoWindow
+                position={{ lat: selectedLocation.lat, lng: selectedLocation.lng }}
+                onCloseClick={() => setSelectedLocation(null)}
+              >
+                <div className="p-2 max-w-xs">
+                  <h3 className="font-semibold mb-1">{selectedLocation.name}</h3>
+                  <p className="text-sm text-gray-600 mb-2">{selectedLocation.address}</p>
+                  <p className="text-sm font-medium mb-3">{selectedLocation.phone}</p>
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => handleCall(selectedLocation.phone)}
+                      className="px-3 py-1 bg-green-500 text-white text-sm rounded hover:bg-green-600"
+                    >
+                      📞 Call
+                    </button>
+                    <button
+                      onClick={() => handleDirections(selectedLocation)}
+                      className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600"
+                    >
+                      📍 Directions
+                    </button>
+                  </div>
+                </div>
+              </InfoWindow>
+            )}
+
+            {/* Directions renderer */}
+            {directionsResponse && (
+              <DirectionsRenderer
+                directions={directionsResponse}
+                options={{
+                  polylineOptions: {
+                    strokeColor: "#10b981",
+                    strokeWeight: 4,
+                    strokeOpacity: 0.8
+                  }
+                }}
               />
-            </Wrapper>
-          </GoogleMapsWrapper>
+            )}
+
+            {/* Unsafe area polygons */}
+            {unsafeAreas.map(area => (
+              <Polygon
+                key={area.id}
+                paths={area.coordinates}
+                options={{
+                  fillColor: "#ef4444",
+                  fillOpacity: 0.2,
+                  strokeColor: "#ef4444",
+                  strokeOpacity: 0.6,
+                  strokeWeight: 2
+                }}
+              />
+            ))}
+          </GoogleMap>
         </div>
       </div>
 
-      {/* Selected Location Details */}
-      {selectedLocation && (
-        <div className="fixed bottom-0 left-0 right-0 bg-background border-t border-primary/10 p-6">
-          <SafeCard>
-            <SafeCardContent className="p-4">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <span className="text-xl">{markerIcons[selectedLocation.type]}</span>
-                    <h3 className="font-semibold">{selectedLocation.name}</h3>
-                  </div>
-                  <p className="text-sm text-muted-foreground mb-2">{selectedLocation.address}</p>
-                  <p className="text-sm text-primary font-medium">{selectedLocation.phone}</p>
-                </div>
-                <SafeButton
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setSelectedLocation(null)}
-                >
-                  ✕
-                </SafeButton>
-              </div>
-              
-              <div className="flex space-x-2 mt-4">
-                <SafeButton
-                  variant="primary"
-                  size="sm"
-                  onClick={() => handleCall(selectedLocation.phone)}
-                  className="flex-1"
-                >
-                  <Phone className="h-4 w-4 mr-1" />
-                  Call
-                </SafeButton>
-                <SafeButton
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleDirections(selectedLocation)}
-                  className="flex-1"
-                >
-                  <Navigation className="h-4 w-4 mr-1" />
-                  Directions
-                </SafeButton>
-              </div>
-            </SafeCardContent>
-          </SafeCard>
-        </div>
-      )}
+      {/* Floating SOS Button */}
+      <div className="fixed bottom-6 right-6">
+        <SafeButton
+          variant="emergency"
+          size="lg"
+          onClick={() => navigate("/emergency")}
+          className="rounded-full w-16 h-16 shadow-lg"
+        >
+          🆘
+        </SafeButton>
+      </div>
     </div>
   )
 }
